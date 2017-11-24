@@ -1,4 +1,4 @@
-// Copyright (C) 2015 The Android Open Source Project
+// Copyright (C) 2017 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
 // limitations under the License.
 
 package com.googlesource.gerrit.plugins.oauth;
-
-import static org.scribe.utils.OAuthEncoder.encode;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -31,27 +29,24 @@ import org.scribe.model.Verifier;
 import org.scribe.oauth.OAuthService;
 import org.scribe.utils.Preconditions;
 
-// Source: https://github.com/FeedTheCoffers/scribe-java-extras
-// License: Apache 2
-// https://github.com/FeedTheCoffers/scribe-java-extras/blob/master/pom.xml
-public class Google2Api extends DefaultApi20 {
+public class GitLabApi extends DefaultApi20 {
   private static final String AUTHORIZE_URL =
-      "https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=%s&redirect_uri=%s&scope=%s";
+      "%s/oauth/authorize?client_id=%s&response_type=code&redirect_uri=%s";
 
-  @Override
-  public String getAccessTokenEndpoint() {
-    return "https://accounts.google.com/o/oauth2/token";
+  private final String rootUrl;
+
+  public GitLabApi(String rootUrl) {
+    this.rootUrl = rootUrl;
   }
 
   @Override
   public String getAuthorizationUrl(OAuthConfig config) {
-    Preconditions.checkValidUrl(
-        config.getCallback(), "Must provide a valid url as callback. Google does not support OOB");
-    Preconditions.checkEmptyString(
-        config.getScope(), "Must provide a valid value as scope. Google does not support no scope");
+    return String.format(AUTHORIZE_URL, rootUrl, config.getApiKey(), config.getCallback());
+  }
 
-    return String.format(
-        AUTHORIZE_URL, config.getApiKey(), encode(config.getCallback()), encode(config.getScope()));
+  @Override
+  public String getAccessTokenEndpoint() {
+    return String.format("%s/oauth/token", rootUrl);
   }
 
   @Override
@@ -61,15 +56,15 @@ public class Google2Api extends DefaultApi20 {
 
   @Override
   public OAuthService createService(OAuthConfig config) {
-    return new GoogleOAuthService(this, config);
+    return new GitLabOAuthService(this, config);
   }
 
   @Override
   public AccessTokenExtractor getAccessTokenExtractor() {
-    return new GoogleJsonTokenExtractor();
+    return new GitLabJsonTokenExtractor();
   }
 
-  private static final class GoogleOAuthService implements OAuthService {
+  private static final class GitLabOAuthService implements OAuthService {
     private static final String VERSION = "2.0";
 
     private static final String GRANT_TYPE = "grant_type";
@@ -84,7 +79,7 @@ public class Google2Api extends DefaultApi20 {
      * @param api OAuth2.0 api information
      * @param config OAuth 2.0 configuration param object
      */
-    public GoogleOAuthService(DefaultApi20 api, OAuthConfig config) {
+    public GitLabOAuthService(DefaultApi20 api, OAuthConfig config) {
       this.api = api;
       this.config = config;
     }
@@ -98,7 +93,9 @@ public class Google2Api extends DefaultApi20 {
       request.addBodyParameter(OAuthConstants.CLIENT_SECRET, config.getApiSecret());
       request.addBodyParameter(OAuthConstants.CODE, verifier.getValue());
       request.addBodyParameter(OAuthConstants.REDIRECT_URI, config.getCallback());
-      if (config.hasScope()) request.addBodyParameter(OAuthConstants.SCOPE, config.getScope());
+      if (config.hasScope()) {
+        request.addBodyParameter(OAuthConstants.SCOPE, config.getScope());
+      }
       request.addBodyParameter(GRANT_TYPE, GRANT_TYPE_VALUE);
       Response response = request.send();
       return api.getAccessTokenExtractor().extract(response.getBody());
@@ -130,7 +127,7 @@ public class Google2Api extends DefaultApi20 {
     }
   }
 
-  private static final class GoogleJsonTokenExtractor implements AccessTokenExtractor {
+  private static final class GitLabJsonTokenExtractor implements AccessTokenExtractor {
     private Pattern accessTokenPattern = Pattern.compile("\"access_token\"\\s*:\\s*\"(\\S*?)\"");
 
     @Override
@@ -141,7 +138,6 @@ public class Google2Api extends DefaultApi20 {
       if (matcher.find()) {
         return new Token(matcher.group(1), "", response);
       }
-
       throw new OAuthException("Cannot extract an acces token. Response was: " + response);
     }
   }

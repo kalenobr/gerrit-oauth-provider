@@ -14,51 +14,101 @@
 package com.googlesource.gerrit.plugins.oauth;
 
 import com.google.gerrit.extensions.annotations.PluginName;
-import com.google.gerrit.pgm.util.ConsoleUI;
-import com.google.gerrit.pgm.init.InitStep;
-import com.google.gerrit.pgm.init.Section;
+import com.google.gerrit.pgm.init.api.ConsoleUI;
+import com.google.gerrit.pgm.init.api.InitStep;
+import com.google.gerrit.pgm.init.api.Section;
 import com.google.inject.Inject;
 
 class InitOAuth implements InitStep {
   static final String PLUGIN_SECTION = "plugin";
   static final String CLIENT_ID = "client-id";
   static final String CLIENT_SECRET = "client-secret";
-  static final String LINK_TO_EXISTING_OPENID_ACCOUNT =
-      "link-to-existing-openid-accounts";
+  static final String LINK_TO_EXISTING_OPENID_ACCOUNT = "link-to-existing-openid-accounts";
+  static final String FIX_LEGACY_USER_ID = "fix-legacy-user-id";
   static final String DOMAIN = "domain";
+  static final String USE_EMAIL_AS_USERNAME = "use-email-as-username";
+  static final String ROOT_URL = "root-url";
+  static final String SERVICE_NAME = "service-name";
+  static String FIX_LEGACY_USER_ID_QUESTION = "Fix legacy user id, without oauth provider prefix?";
 
   private final ConsoleUI ui;
   private final Section googleOAuthProviderSection;
   private final Section githubOAuthProviderSection;
+  private final Section bitbucketOAuthProviderSection;
+  private final Section casOAuthProviderSection;
+  private final Section facebookOAuthProviderSection;
+  private final Section gitlabOAuthProviderSection;
+  private final Section dexOAuthProviderSection;
 
   @Inject
-  InitOAuth(ConsoleUI ui,
-      Section.Factory sections,
-      @PluginName String pluginName) {
+  InitOAuth(ConsoleUI ui, Section.Factory sections, @PluginName String pluginName) {
     this.ui = ui;
-    this.googleOAuthProviderSection = sections.get(
-        PLUGIN_SECTION, pluginName + GoogleOAuthService.CONFIG_SUFFIX);
-    this.githubOAuthProviderSection = sections.get(
-        PLUGIN_SECTION, pluginName + GitHubOAuthService.CONFIG_SUFFIX);
+    this.googleOAuthProviderSection =
+        sections.get(PLUGIN_SECTION, pluginName + GoogleOAuthService.CONFIG_SUFFIX);
+    this.githubOAuthProviderSection =
+        sections.get(PLUGIN_SECTION, pluginName + GitHubOAuthService.CONFIG_SUFFIX);
+    this.bitbucketOAuthProviderSection =
+        sections.get(PLUGIN_SECTION, pluginName + BitbucketOAuthService.CONFIG_SUFFIX);
+    this.casOAuthProviderSection =
+        sections.get(PLUGIN_SECTION, pluginName + CasOAuthService.CONFIG_SUFFIX);
+    this.facebookOAuthProviderSection =
+        sections.get(PLUGIN_SECTION, pluginName + FacebookOAuthService.CONFIG_SUFFIX);
+    this.gitlabOAuthProviderSection =
+        sections.get(PLUGIN_SECTION, pluginName + GitLabOAuthService.CONFIG_SUFFIX);
+    this.dexOAuthProviderSection =
+        sections.get(PLUGIN_SECTION, pluginName + DexOAuthService.CONFIG_SUFFIX);
   }
 
   @Override
   public void run() throws Exception {
     ui.header("OAuth Authentication Provider");
 
-    boolean configureGoogleOAuthProvider = ui.yesno(
-        true, "Use Google OAuth provider for Gerrit login ?");
+    boolean configureGoogleOAuthProvider =
+        ui.yesno(true, "Use Google OAuth provider for Gerrit login ?");
     if (configureGoogleOAuthProvider) {
       configureOAuth(googleOAuthProviderSection);
-      googleOAuthProviderSection.string(
-          "Link to OpenID accounts?",
-          LINK_TO_EXISTING_OPENID_ACCOUNT, "true");
+      googleOAuthProviderSection.string(FIX_LEGACY_USER_ID_QUESTION, FIX_LEGACY_USER_ID, "false");
     }
 
-    boolean configueGitHubOAuthProvider = ui.yesno(
-        true, "Use GitHub OAuth provider for Gerrit login ?");
+    boolean configueGitHubOAuthProvider =
+        ui.yesno(true, "Use GitHub OAuth provider for Gerrit login ?");
     if (configueGitHubOAuthProvider) {
       configureOAuth(githubOAuthProviderSection);
+      githubOAuthProviderSection.string(FIX_LEGACY_USER_ID_QUESTION, FIX_LEGACY_USER_ID, "false");
+    }
+
+    boolean configureBitbucketOAuthProvider =
+        ui.yesno(true, "Use Bitbucket OAuth provider for Gerrit login ?");
+    if (configureBitbucketOAuthProvider) {
+      configureOAuth(bitbucketOAuthProviderSection);
+      bitbucketOAuthProviderSection.string(
+          FIX_LEGACY_USER_ID_QUESTION, FIX_LEGACY_USER_ID, "false");
+    }
+
+    boolean configureCasOAuthProvider = ui.yesno(true, "Use CAS OAuth provider for Gerrit login ?");
+    if (configureCasOAuthProvider) {
+      casOAuthProviderSection.string("CAS Root URL", ROOT_URL, null);
+      configureOAuth(casOAuthProviderSection);
+      casOAuthProviderSection.string(FIX_LEGACY_USER_ID_QUESTION, FIX_LEGACY_USER_ID, "false");
+    }
+
+    boolean configueFacebookOAuthProvider =
+        ui.yesno(true, "Use Facebook OAuth provider for Gerrit login ?");
+    if (configueFacebookOAuthProvider) {
+      configureOAuth(facebookOAuthProviderSection);
+    }
+
+    boolean configureGitLabOAuthProvider =
+        ui.yesno(true, "Use GitLab OAuth provider for Gerrit login ?");
+    if (configureGitLabOAuthProvider) {
+      gitlabOAuthProviderSection.string("GitLab Root URL", ROOT_URL, null);
+      configureOAuth(gitlabOAuthProviderSection);
+    }
+
+    boolean configureDexOAuthProvider = ui.yesno(true, "Use Dex OAuth provider for Gerrit login ?");
+    if (configureDexOAuthProvider) {
+      dexOAuthProviderSection.string("Dex Root URL", ROOT_URL, null);
+      configureOAuth(dexOAuthProviderSection);
     }
   }
 
@@ -68,6 +118,5 @@ class InitOAuth implements InitStep {
   }
 
   @Override
-  public void postRun() throws Exception {
-  }
+  public void postRun() throws Exception {}
 }

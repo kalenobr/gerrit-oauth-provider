@@ -1,4 +1,4 @@
-// Copyright (C) 2015 The Android Open Source Project
+// Copyright (C) 2017 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import com.google.inject.Singleton;
 import java.io.IOException;
 import javax.servlet.http.HttpServletResponse;
 import org.scribe.builder.ServiceBuilder;
+import org.scribe.builder.api.FacebookApi;
 import org.scribe.model.OAuthRequest;
 import org.scribe.model.Response;
 import org.scribe.model.Token;
@@ -42,27 +43,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Singleton
-class GitHubOAuthService implements OAuthServiceProvider {
-  private static final Logger log = LoggerFactory.getLogger(GitHubOAuthService.class);
-  static final String CONFIG_SUFFIX = "-github-oauth";
-  private static final String GITHUB_PROVIDER_PREFIX = "github-oauth:";
-  private static final String PROTECTED_RESOURCE_URL = "https://api.github.com/user";
+class FacebookOAuthService implements OAuthServiceProvider {
+  private static final Logger log = LoggerFactory.getLogger(FacebookOAuthService.class);
+  static final String CONFIG_SUFFIX = "-facebook-oauth";
+  private static final String PROTECTED_RESOURCE_URL = "https://graph.facebook.com/me";
 
-  private static final String SCOPE = "user:email";
-  private final boolean fixLegacyUserId;
+  private static final String FACEBOOK_PROVIDER_PREFIX = "facebook-oauth:";
+  private static final String SCOPE = "email";
+  private static final String FIELDS_QUERY = "fields";
+  private static final String FIELDS = "email,name";
   private final OAuthService service;
 
   @Inject
-  GitHubOAuthService(
+  FacebookOAuthService(
       PluginConfigFactory cfgFactory,
       @PluginName String pluginName,
       @CanonicalWebUrl Provider<String> urlProvider) {
+
     PluginConfig cfg = cfgFactory.getFromGerritConfig(pluginName + CONFIG_SUFFIX);
     String canonicalWebUrl = CharMatcher.is('/').trimTrailingFrom(urlProvider.get()) + "/";
-    fixLegacyUserId = cfg.getBoolean(InitOAuth.FIX_LEGACY_USER_ID, false);
+
     service =
         new ServiceBuilder()
-            .provider(GitHub2Api.class)
+            .provider(FacebookApi.class)
             .apiKey(cfg.getString(InitOAuth.CLIENT_ID))
             .apiSecret(cfg.getString(InitOAuth.CLIENT_SECRET))
             .callback(canonicalWebUrl + "oauth")
@@ -74,8 +77,10 @@ class GitHubOAuthService implements OAuthServiceProvider {
   public OAuthUserInfo getUserInfo(OAuthToken token) throws IOException {
     OAuthRequest request = new OAuthRequest(Verb.GET, PROTECTED_RESOURCE_URL);
     Token t = new Token(token.getToken(), token.getSecret(), token.getRaw());
+    request.addQuerystringParameter(FIELDS_QUERY, FIELDS);
     service.signRequest(t, request);
     Response response = request.send();
+
     if (response.getCode() != HttpServletResponse.SC_OK) {
       throw new IOException(
           String.format(
@@ -84,6 +89,7 @@ class GitHubOAuthService implements OAuthServiceProvider {
     }
     JsonElement userJson =
         OutputFormat.JSON.newGson().fromJson(response.getBody(), JsonElement.class);
+
     if (log.isDebugEnabled()) {
       log.debug("User info response: {}", response.getBody());
     }
@@ -95,13 +101,17 @@ class GitHubOAuthService implements OAuthServiceProvider {
       }
       JsonElement email = jsonObject.get("email");
       JsonElement name = jsonObject.get("name");
-      JsonElement login = jsonObject.get("login");
+      // Heads up!
+      // Lets keep `login` equal to `email`, since `username` field is
+      // deprecated for Facebook API versions v2.0 and higher
+      JsonElement login = jsonObject.get("email");
+
       return new OAuthUserInfo(
-          GITHUB_PROVIDER_PREFIX + id.getAsString(),
+          FACEBOOK_PROVIDER_PREFIX + id.getAsString(),
           login == null || login.isJsonNull() ? null : login.getAsString(),
           email == null || email.isJsonNull() ? null : email.getAsString(),
           name == null || name.isJsonNull() ? null : name.getAsString(),
-          fixLegacyUserId ? id.getAsString() : null);
+          null);
     }
 
     throw new IOException(String.format("Invalid JSON '%s': not a JSON Object", userJson));
@@ -112,6 +122,7 @@ class GitHubOAuthService implements OAuthServiceProvider {
     Verifier vi = new Verifier(rv.getValue());
     Token to = service.getAccessToken(null, vi);
     OAuthToken result = new OAuthToken(to.getToken(), to.getSecret(), to.getRawResponse());
+
     return result;
   }
 
@@ -127,6 +138,6 @@ class GitHubOAuthService implements OAuthServiceProvider {
 
   @Override
   public String getName() {
-    return "GitHub OAuth2";
+    return "Facebook OAuth2";
   }
 }
